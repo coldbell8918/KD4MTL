@@ -1,20 +1,16 @@
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import argparse
-import os
 import torch
-import fnmatch
 import numpy as np
-from torch.autograd import Variable
+import torch.nn.functional as F
 
-
+# 네트워크
 class SegNet(nn.Module):
     def __init__(self, class_nb=13, task='semantic'):
         super(SegNet, self).__init__()
+
         # initialise network parameters
-        filter = [64, 128, 256, 512, 512]
-        self.class_nb = class_nb
+        filter = [64, 128, 256, 512, 512]# 각 레이어 별 채널 크기
+        self.class_nb = class_nb # 클래스 개수 default:13
         self.task = task
 
         # define encoder decoder layers

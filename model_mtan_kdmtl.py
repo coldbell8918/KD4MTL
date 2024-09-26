@@ -1,23 +1,17 @@
 import os
 import torch
-import fnmatch
 import numpy as np
 
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import argparse
-import torch.utils.data.sampler as sampler
 import shutil
 
 from dataset.nyuv2 import *
-from torch.autograd import Variable
 from model.mtan import SegNet
 from model.mtan_single import SegNet as SegNet_STAN
 
-from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Logger, AverageMeter, mkdir_p
 from progress.bar import Bar as Bar
-import pdb
 
 parser = argparse.ArgumentParser(description='Knowledge Distillation for Multi-task Learning (MTAN)')
 parser.add_argument('--dataroot', default='nyuv2', type=str, help='dataset root')
@@ -89,7 +83,7 @@ print('LOSS FORMAT: SEMANTIC_LOSS MEAN_IOU PIX_ACC | DEPTH_LOSS ABS_ERR REL_ERR 
 
 # define dataset path
 dataset_path = opt.dataroot
-nyuv2_train_set = NYUv2(root=dataset_path, train=True)
+nyuv2_train_set = NYUv2(root=dataset_path, train=True, augmentation=True)
 nyuv2_test_set = NYUv2(root=dataset_path, train=False)
 
 batch_size = 2
@@ -125,7 +119,7 @@ for epoch in range(total_epoch):
     nyuv2_train_dataset = iter(nyuv2_train_loader)
     bar = Bar('Training', max=train_batch)
     for k in range(train_batch):
-        train_data, train_label, train_depth, train_normal = nyuv2_train_dataset.next()
+        train_data, train_label, train_depth, train_normal = next(nyuv2_train_dataset)
         train_data, train_label = train_data.cuda(), train_label.type(torch.LongTensor).cuda()
         train_depth, train_normal = train_depth.cuda(), train_normal.cuda()
 
@@ -187,18 +181,18 @@ for epoch in range(total_epoch):
                     dd=dist_loss_save[1].val,
                     dn=dist_loss_save[2].val,
                     )
-        bar.next()
+        # bar.next()
     bar.finish()
 
-    loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
-    isbest = loss_index < best_loss
+    # loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
+    # isbest = loss_index < best_loss
 
     # evaluating test data
     model.eval()
     with torch.no_grad():  # operations inside don't track history
         nyuv2_test_dataset = iter(nyuv2_test_loader)
         for k in range(test_batch):
-            test_data, test_label, test_depth, test_normal = nyuv2_test_dataset.next()
+            test_data, test_label, test_depth, test_normal = next(nyuv2_test_dataset)
             test_data, test_label = test_data.cuda(),  test_label.type(torch.LongTensor).cuda()
             test_depth, test_normal = test_depth.cuda(), test_normal.cuda()
 
@@ -214,7 +208,9 @@ for epoch in range(total_epoch):
             cost[19], cost[20], cost[21], cost[22], cost[23] = model.normal_error(test_pred[2], test_normal)
 
             avg_cost[index, 12:] += cost[12:] / test_batch
-
+            
+    loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
+    isbest = loss_index < best_loss
 
     print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} '
           'TEST: {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} '

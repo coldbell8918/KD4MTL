@@ -1,6 +1,5 @@
 import os
 import torch
-import fnmatch
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
@@ -136,7 +135,7 @@ for epoch in range(total_epoch):
     nyuv2_train_dataset = iter(nyuv2_train_loader)
     for k in range(train_batch):
         # pdb.set_trace()
-        train_data, train_label, train_depth, train_normal = nyuv2_train_dataset.next()
+        train_data, train_label, train_depth, train_normal = next(nyuv2_train_dataset)
         train_data, train_label = train_data.cuda(), train_label.type(torch.LongTensor).cuda()
         train_depth, train_normal = train_depth.cuda(), train_normal.cuda()
         
@@ -150,6 +149,8 @@ for epoch in range(total_epoch):
         loss = torch.mean(sum(w[i] * train_loss[i] for i in range(3)))
         dist_loss = []
         # pdb.set_trace()
+
+        # KD
         for i, t in enumerate(tasks):
             with torch.no_grad():
                 _, _, feat_ti = single_model[i](train_data)
@@ -197,18 +198,18 @@ for epoch in range(total_epoch):
                 dd=dist_loss_save[1].val,
                 dn=dist_loss_save[2].val,
                 )
-        bar.next()
+        # bar.next()
     bar.finish()
 
-    loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
-    isbest = loss_index < best_loss
+    # loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
+    # isbest = loss_index < best_loss
 
     # evaluating test data
     model.eval()
     with torch.no_grad():  # operations inside don't track history
         nyuv2_test_dataset = iter(nyuv2_test_loader)
         for k in range(test_batch):
-            test_data, test_label, test_depth, test_normal = nyuv2_test_dataset.next()
+            test_data, test_label, test_depth, test_normal = next(nyuv2_test_dataset)
             test_data, test_label = test_data.cuda(),  test_label.type(torch.LongTensor).cuda()
             test_depth, test_normal = test_depth.cuda(), test_normal.cuda()
 
@@ -224,7 +225,9 @@ for epoch in range(total_epoch):
             cost[19], cost[20], cost[21], cost[22], cost[23] = model.normal_error(test_pred[2], test_normal)
 
             avg_cost[index, 12:] += cost[12:] / test_batch
-
+            
+    loss_index = (avg_cost[index, 0] + avg_cost[index, 3] + avg_cost[index, 6]) / 3.0
+    isbest = loss_index < best_loss
 
     print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} '
           'TEST: {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} | {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}'

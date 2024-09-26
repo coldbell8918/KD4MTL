@@ -21,6 +21,7 @@ parser.add_argument('--task', default='semantic', type=str, help='choose task: s
 parser.add_argument('--dataroot', default='nyuv2', type=str, help='dataset root')
 parser.add_argument('--gpu', default='0', type=str, help='id(s) for CUDA_VISIBLE_DEVICES')
 parser.add_argument('--out', default='result', help='Directory to output the result')
+parser.add_argument('--apply_augmentation', default='True', action='store_true', help='toggle to apply data augmentation on NYUv2')
 opt = parser.parse_args()
 
 
@@ -60,7 +61,7 @@ print('LOSS FORMAT: SEMANTIC_LOSS MEAN_IOU PIX_ACC\n'
 
 # define dataset path
 dataset_path = opt.dataroot
-nyuv2_train_set = NYUv2(root=dataset_path, train=True)
+nyuv2_train_set = NYUv2(root=dataset_path, train=True, augmentation=True)
 nyuv2_test_set = NYUv2(root=dataset_path, train=False)
 
 batch_size = 2
@@ -92,7 +93,7 @@ for epoch in range(total_epoch):
 
     bar = Bar('Training', max=train_batch)
     for k in range(train_batch):
-        train_data, train_label, train_depth, train_normal = nyuv2_train_dataset.next()
+        train_data, train_label, train_depth, train_normal = next(nyuv2_train_dataset)
         train_data, train_label = train_data.cuda(), train_label.type(torch.LongTensor).cuda()
         train_depth, train_normal = train_depth.cuda(), train_normal.cuda()
 
@@ -130,27 +131,27 @@ for epoch in range(total_epoch):
                     loss_d=cost[3],
                     loss_n=cost[6],
                     )
-        bar.next()
+        # next(bar)
     bar.finish()
 
-    if opt.task == 'semantic':
-        loss_index = avg_cost[index, 0]
-    if opt.task == 'depth':
-        loss_index = avg_cost[index, 3]
-    if opt.task == 'normal':
-        loss_index = avg_cost[index, 6]
+    # if opt.task == 'semantic':
+    #     loss_index = avg_cost[index, 0]
+    # if opt.task == 'depth':
+    #     loss_index = avg_cost[index, 3]
+    # if opt.task == 'normal':
+    #     loss_index = avg_cost[index, 6]
         
     
-    isbest = loss_index < best_loss
+    # isbest = loss_index < best_loss
 
     # evaluating test data
     model.eval()
     with torch.no_grad():  # operations inside don't track history
         nyuv2_test_dataset = iter(nyuv2_test_loader)
         for k in range(test_batch):
-            test_data, test_label, test_depth, test_normal = nyuv2_test_dataset.next()
+            test_data, test_label, test_depth, test_noramal = next(nyuv2_test_dataset)
             test_data, test_label = test_data.cuda(),  test_label.type(torch.LongTensor).cuda()
-            test_depth, test_normal = test_depth.cuda(), test_normal.cuda()
+            test_depth, test_noramal = test_depth.cuda(), test_noramal.cuda()
 
             test_pred, _ = model(test_data)
 
@@ -166,11 +167,20 @@ for epoch in range(total_epoch):
                 cost[16], cost[17] = model.depth_error(test_pred, test_depth)
 
             if opt.task == 'normal':
-                test_loss = model.model_fit(test_pred, test_normal)
+                test_loss = model.model_fit(test_pred, test_noramal)
                 cost[18] = test_loss.item()
-                cost[19], cost[20], cost[21], cost[22], cost[23] = model.normal_error(test_pred, test_normal)
+                cost[19], cost[20], cost[21], cost[22], cost[23] = model.normal_error(test_pred, test_noramal)
 
             avg_cost[index, 12:] += cost[12:] / test_batch
+
+    if opt.task == 'semantic':
+        loss_index = avg_cost[index, 0]
+    if opt.task == 'depth':
+        loss_index = avg_cost[index, 3]
+    if opt.task == 'normal':
+        loss_index = avg_cost[index, 6]
+        
+    isbest = loss_index < best_loss
 
     if opt.task == 'semantic':
         print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} TEST: {:.4f} {:.4f} {:.4f}'

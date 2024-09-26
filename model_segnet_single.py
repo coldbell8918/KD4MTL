@@ -15,6 +15,8 @@ import numpy as np
 import pdb
 from progress.bar import Bar as Bar
 from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
+import torchvision
+from matplotlib import pyplot as plt
 
 parser = argparse.ArgumentParser(description='Single Task Learning (SegNet)')
 parser.add_argument('--type', default='standard', type=str, help='split type: standard, wide, deep')
@@ -26,6 +28,7 @@ opt = parser.parse_args()
 
 tasks = ['S', 'D', 'N']
 
+topilimage = torchvision.transforms.ToPILImage
 
 def save_checkpoint(state, is_best, checkpoint=opt.out, filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, 'segnet_single_model_task_{}_'.format(opt.task) + filename)
@@ -47,7 +50,6 @@ model = SegNet(type_=opt.type, class_nb=13).cuda()
 
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
-
 
 # compute parameter space
 def count_parameters(model):
@@ -99,9 +101,10 @@ for epoch in range(total_epoch):
     # iteration for all batches
     model.train()
     nyuv2_train_dataset = iter(nyuv2_train_loader)
+
     for k in range(train_batch):
         # pdb.set_trace()
-        train_data, train_label, train_depth, train_normal = nyuv2_train_dataset.next()
+        train_data, train_label, train_depth, train_normal = next(nyuv2_train_dataset)
         train_data, train_label = train_data.cuda(), train_label.type(torch.LongTensor).cuda()
         train_depth, train_normal = train_depth.cuda(), train_normal.cuda()
         
@@ -148,7 +151,7 @@ for epoch in range(total_epoch):
                     size=train_batch,
                     loss_n=avg_cost[index,6],
                     )
-        bar.next()
+        # next(bar)
     bar.finish()
 
     if opt.task == 'semantic':
@@ -164,7 +167,7 @@ for epoch in range(total_epoch):
     with torch.no_grad():  # operations inside don't track history
         nyuv2_test_dataset = iter(nyuv2_test_loader)
         for k in range(test_batch):
-            test_data, test_label, test_depth, test_normal = nyuv2_test_dataset.next()
+            test_data, test_label, test_depth, test_normal = next(nyuv2_test_dataset)
             test_data, test_label = test_data.cuda(),  test_label.type(torch.LongTensor).cuda()
             test_depth, test_normal = test_depth.cuda(), test_normal.cuda()
 
@@ -181,19 +184,26 @@ for epoch in range(total_epoch):
 
             avg_cost[index, 12:] += cost[12:] / test_batch
 
+            img_pil = topilimage(test_label)
+            img_array = np.array(img_pil)
+            
+            # plt.imshow(img_array)
+            # plt.show()
+            # print(test_label.shape)
+
 
     if opt.task == 'semantic':
-        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f}'
+        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} || '
           'TEST: {:.4f} {:.4f} {:.4f}'
           .format(index, avg_cost[index, 0], avg_cost[index, 1], avg_cost[index, 2], 
                 avg_cost[index, 12], avg_cost[index, 13], avg_cost[index, 14]))
     elif opt.task == 'depth':
-        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f}'
+        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} || '
           'TEST: {:.4f} {:.4f} {:.4f}'
           .format(index, avg_cost[index, 3], avg_cost[index, 4], avg_cost[index, 5], 
                 avg_cost[index, 15], avg_cost[index, 16], avg_cost[index, 17]))
     elif opt.task == 'normal':
-        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} '
+        print('Epoch: {:04d} | TRAIN: {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} || '
           'TEST: {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}'
           .format(index, avg_cost[index, 6], avg_cost[index, 7], avg_cost[index, 8], avg_cost[index, 9], avg_cost[index, 10], avg_cost[index, 11],
                 avg_cost[index, 18], avg_cost[index, 19], avg_cost[index, 20], avg_cost[index, 21], avg_cost[index, 22], avg_cost[index, 23]))
